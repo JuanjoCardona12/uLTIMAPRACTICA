@@ -22,6 +22,7 @@ public:
     ~GameWidget();
 
     void launchProjectile(double angleDeg, double speed);
+    void resetGame();
 
     GameState getState()          const { return m_state; }
     int       getCurrentPlayer() const { return m_currentPlayer; }
