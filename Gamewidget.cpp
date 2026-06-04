@@ -237,7 +237,7 @@ void GameWidget::checkCollisions()
     if (!m_projectile) return;
 
     // --- Colisión 1: ELÁSTICA con paredes ---
-    m_physics.elasticWallCollision(m_projectile, SCENE_W, SCENE_H);
+    m_physics.elasticWallCollision(m_projectile, SCENE_W, SCENE_H, GROUND_Y);
     m_projectile->syncGraphics();
 
     // --- Colisión 2: INELÁSTICA con obstáculos del rival ---

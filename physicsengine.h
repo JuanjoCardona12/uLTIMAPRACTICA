@@ -11,7 +11,7 @@ public:
 
     PhysicsEngine() = default;
 
-    bool   elasticWallCollision(Projectile* p, double sceneW, double sceneH);
+    bool   elasticWallCollision(Projectile* p, double sceneW, double sceneH, double groundY);
     // Retorna el daño aplicado en este golpe (0 si no hubo colisión)
     double inelasticObstacleCollision(Projectile* p, Obstacle* obs);
     double calculateDamage(Projectile* p, double speed) const;

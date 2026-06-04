@@ -9,7 +9,7 @@
 // corrige la posición para que el proyectil quede estrictamente dentro
 // de los límites (evita múltiples detecciones consecutivas en la misma pared).
 // =============================================================================
-bool PhysicsEngine::elasticWallCollision(Projectile* p, double sceneW, double sceneH)
+bool PhysicsEngine::elasticWallCollision(Projectile* p, double sceneW, double sceneH, double groundY)
 {
     bool hit = false;
     double r = Projectile::RADIUS;
@@ -33,9 +33,9 @@ bool PhysicsEngine::elasticWallCollision(Projectile* p, double sceneW, double sc
         p->setVy(std::abs(p->getVy()));
         hit = true;
     }
-    // Pared inferior (suelo)
-    else if (p->getY() + r >= sceneH) {
-        p->setY(sceneH - r - 1.0);
+    // Pared inferior (suelo visible — franja verde)
+    else if (p->getY() + r >= groundY) {
+        p->setY(groundY - r - 1.0);
         p->setVy(-std::abs(p->getVy()));
         hit = true;
     }

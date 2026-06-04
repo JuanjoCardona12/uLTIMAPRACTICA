@@ -14,9 +14,10 @@ class GameWidget : public QGraphicsView {
     Q_OBJECT
 
 public:
-    static constexpr double SCENE_W = 900.0;
-    static constexpr double SCENE_H = 550.0;
-    static constexpr double DT      = 1.0 / 60.0;
+    static constexpr double SCENE_W  = 900.0;
+    static constexpr double SCENE_H  = 550.0;
+    static constexpr double GROUND_Y = SCENE_H * 0.75;  // 412.5 — tope de la franja verde
+    static constexpr double DT       = 1.0 / 60.0;
 
     explicit GameWidget(QWidget* parent = nullptr);
     ~GameWidget();
