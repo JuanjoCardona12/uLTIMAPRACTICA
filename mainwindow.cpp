@@ -15,6 +15,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_game, &GameWidget::gameOver,      this, &MainWindow::onGameOver);
     connect(m_game, &GameWidget::obstacleHit,   this, &MainWindow::onObstacleHit);
     connect(m_launchBtn, &QPushButton::clicked, this, &MainWindow::onLaunch);
+    connect(m_resetBtn,  &QPushButton::clicked, this, &MainWindow::onReset);
 
     connect(m_angleSlider, &QSlider::valueChanged, [this](int v) {
         m_angleLabel->setText(QString("Angulo: %1 grados").arg(v));
@@ -61,24 +62,20 @@ void MainWindow::setupUI()
 
     right->addSpacing(6);
 
-    // Barras de vida
+    // Barras de resistencia (se inicializan con rango 0-1, se ajustan al crear GameWidget)
     auto* p1Box    = new QGroupBox("Jugador 1");
     auto* p1Layout = new QVBoxLayout(p1Box);
     m_p1Health     = new QProgressBar();
-    m_p1Health->setRange(0, static_cast<int>(Player::MAX_HEALTH));
-    m_p1Health->setValue(static_cast<int>(Player::MAX_HEALTH));
     m_p1Health->setStyleSheet("QProgressBar::chunk{background:#e74c3c;}");
-    m_p1Health->setFormat("%v / %m HP");
+    m_p1Health->setFormat("%v / %m");
     p1Layout->addWidget(m_p1Health);
     right->addWidget(p1Box);
 
     auto* p2Box    = new QGroupBox("Jugador 2");
     auto* p2Layout = new QVBoxLayout(p2Box);
     m_p2Health     = new QProgressBar();
-    m_p2Health->setRange(0, static_cast<int>(Player::MAX_HEALTH));
-    m_p2Health->setValue(static_cast<int>(Player::MAX_HEALTH));
     m_p2Health->setStyleSheet("QProgressBar::chunk{background:#3498db;}");
-    m_p2Health->setFormat("%v / %m HP");
+    m_p2Health->setFormat("%v / %m");
     p2Layout->addWidget(m_p2Health);
     right->addWidget(p2Box);
 
@@ -122,6 +119,15 @@ void MainWindow::setupUI()
     ctrlLayout->addWidget(m_launchBtn);
     right->addWidget(m_controlBox);
 
+    // Reiniciar
+    m_resetBtn = new QPushButton("Nueva partida");
+    m_resetBtn->setMinimumHeight(34);
+    m_resetBtn->setStyleSheet(
+        "QPushButton{background:#8e44ad;color:white;border-radius:6px;}"
+        "QPushButton:hover{background:#9b59b6;}"
+        );
+    right->addWidget(m_resetBtn);
+
     // Instrucciones
     auto* instrBox    = new QGroupBox("Como jugar");
     auto* instrLayout = new QVBoxLayout(instrBox);
@@ -160,6 +166,18 @@ void MainWindow::onLaunch()
                             .arg(static_cast<int>(speed)));
 }
 
+void MainWindow::onReset()
+{
+    m_game->resetGame();
+    m_eventLog->setText("Nueva partida iniciada.");
+    updateTurnLabel();
+    updateHealthBars();
+
+    QString color = "#e74c3c";
+    m_turnLabel->setStyleSheet(
+        QString("color:%1;padding:6px;background:#2c3e50;border-radius:6px;").arg(color));
+}
+
 void MainWindow::onStateChanged(GameState state)
 {
     bool canLaunch = (state == GameState::WAITING_INPUT);
@@ -183,16 +201,23 @@ void MainWindow::onGameOver(QString winner)
     m_turnLabel->setStyleSheet(
         "color:#f1c40f;padding:6px;background:#2c3e50;border-radius:6px;");
     m_launchBtn->setEnabled(false);
-    QMessageBox::information(this, "Fin del juego!",
-                             QString("%1 ha ganado la batalla!\n\nReiniciar la app para jugar de nuevo.").arg(winner));
+
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle("Fin del juego!");
+    msgBox.setText(QString("%1 ha ganado la batalla!").arg(winner));
+    msgBox.setInformativeText("Presiona 'Nueva partida' para volver a jugar.");
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.exec();
 }
 
-void MainWindow::onObstacleHit(int owner, double /*damage*/, double remaining)
+void MainWindow::onObstacleHit(int owner, double damage, double remaining)
 {
     QString pName = (owner == 0) ? "J1" : "J2";
     m_eventLog->setText(
-        QString("Obstaculo de %1 golpeado\nResistencia restante: %2")
-            .arg(pName).arg(static_cast<int>(remaining)));
+        QString("Obstaculo de %1 golpeado\nDano: %2 | Resistencia: %3")
+            .arg(pName)
+            .arg(static_cast<int>(damage))
+            .arg(static_cast<int>(remaining)));
     updateHealthBars();
 }
 
@@ -204,6 +229,13 @@ void MainWindow::updateTurnLabel()
 
 void MainWindow::updateHealthBars()
 {
-    m_p1Health->setValue(static_cast<int>(m_game->getPlayer(0)->getHealth()));
-    m_p2Health->setValue(static_cast<int>(m_game->getPlayer(1)->getHealth()));
+    Player* p1 = m_game->getPlayer(0);
+    Player* p2 = m_game->getPlayer(1);
+
+    // Ajustar el rango según la salud máxima real (suma de resistencias iniciales)
+    m_p1Health->setRange(0, static_cast<int>(p1->getMaxHealth()));
+    m_p1Health->setValue(static_cast<int>(p1->getHealth()));
+
+    m_p2Health->setRange(0, static_cast<int>(p2->getMaxHealth()));
+    m_p2Health->setValue(static_cast<int>(p2->getHealth()));
 }

@@ -24,6 +24,8 @@ public:
 
     void setVx(double vx)  { m_vx = vx; }
     void setVy(double vy)  { m_vy = vy; }
+    void setX(double x)    { m_x = x; syncGraphics(); }
+    void setY(double y)    { m_y = y; syncGraphics(); }
     void setActive(bool a) { m_active = a; }
 
 private:

@@ -17,6 +17,7 @@ public:
 
 private slots:
     void onLaunch();
+    void onReset();
     void onStateChanged(GameState state);
     void onTurnChanged(int player);
     void onGameOver(QString winner);
@@ -35,6 +36,7 @@ private:
     QLabel*       m_speedLabel;
     QSlider*      m_speedSlider;
     QPushButton*  m_launchBtn;
+    QPushButton*  m_resetBtn;
     QProgressBar* m_p1Health;
     QProgressBar* m_p2Health;
     QLabel*       m_eventLog;

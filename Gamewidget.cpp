@@ -37,6 +37,36 @@ GameWidget::~GameWidget()
     delete m_projectile;
 }
 
+void GameWidget::resetGame()
+{
+    m_timer->stop();
+
+    if (m_projectile) {
+        m_scene->removeItem(m_projectile);
+        delete m_projectile;
+        m_projectile = nullptr;
+    }
+
+    // Limpiar escena y obstáculos completamente
+    m_scene->clear();
+    m_allObstacles.clear();
+
+    // Recrear jugadores desde cero
+    m_players[0] = Player(0);
+    m_players[1] = Player(1);
+
+    m_currentPlayer = 0;
+    m_state         = GameState::WAITING_INPUT;
+    m_winner.clear();
+
+    // Reconstruir escena
+    setupScene();
+    setupObstacles();
+
+    emit stateChanged(m_state);
+    emit turnChanged(m_currentPlayer);
+}
+
 // ─────────────────────────────────────────────────────────────
 // Configura el escenario: suelo, cielo, figuras de jugadores
 // ─────────────────────────────────────────────────────────────
@@ -213,14 +243,10 @@ void GameWidget::checkCollisions()
     // --- Colisión 2: INELÁSTICA con obstáculos del rival ---
     int rival = 1 - m_currentPlayer;
     for (Obstacle* obs : m_players[rival].obstacles()) {
-        if (m_physics.inelasticObstacleCollision(m_projectile, obs)) {
-            double remaining = obs->getResistance();
-            double damage    = obs->getMaxResistance() - remaining; // aprox
-            emit obstacleHit(rival, damage, remaining);
-
-            // Si el obstáculo fue destruido, el jugador rival recibe daño extra
+        double damage = m_physics.inelasticObstacleCollision(m_projectile, obs);
+        if (damage > 0.0) {
+            emit obstacleHit(rival, damage, obs->getResistance());
             if (obs->isDestroyed()) {
-                m_players[rival].receiveDamage(30.0);
                 checkWinCondition();
             }
             m_projectile->syncGraphics();
@@ -266,24 +292,9 @@ void GameWidget::endTurn()
 // ─────────────────────────────────────────────────────────────
 void GameWidget::checkWinCondition()
 {
+    // isAlive() retorna false cuando todos los obstáculos del jugador están destruidos
     for (int i = 0; i < 2; i++) {
         if (!m_players[i].isAlive()) {
-            m_state  = GameState::GAME_OVER;
-            m_winner = m_players[1 - i].getName();
-            m_timer->stop();
-            emit stateChanged(m_state);
-            emit gameOver(m_winner);
-            return;
-        }
-    }
-
-    // También gana si destruye todos los obstáculos del rival
-    for (int i = 0; i < 2; i++) {
-        bool allDestroyed = true;
-        for (Obstacle* obs : m_players[i].obstacles()) {
-            if (!obs->isDestroyed()) { allDestroyed = false; break; }
-        }
-        if (allDestroyed) {
             m_state  = GameState::GAME_OVER;
             m_winner = m_players[1 - i].getName();
             m_timer->stop();

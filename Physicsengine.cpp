@@ -4,9 +4,10 @@
 #include <QRectF>
 
 // =============================================================================
-// COLISIÓN 1: PERFECTAMENTE ELÁSTICA con paredes
-// Cuando el proyectil toca una pared se invierte la componente perpendicular
-// a esa pared, conservando la energía cinética total.
+// COLISIÓN 1: PERFECTAMENTE ELÁSTICA con paredes (límites de la caja)
+// Invierte la componente de velocidad perpendicular a la pared tocada y
+// corrige la posición para que el proyectil quede estrictamente dentro
+// de los límites (evita múltiples detecciones consecutivas en la misma pared).
 // =============================================================================
 bool PhysicsEngine::elasticWallCollision(Projectile* p, double sceneW, double sceneH)
 {
@@ -14,23 +15,27 @@ bool PhysicsEngine::elasticWallCollision(Projectile* p, double sceneW, double sc
     double r = Projectile::RADIUS;
 
     // Pared izquierda
-    if (p->getX() - r <= 0) {
-        p->setVx(std::abs(p->getVx()));   // forzar dirección positiva
+    if (p->getX() - r <= 0.0) {
+        p->setX(r + 1.0);                      // corrección de posición
+        p->setVx(std::abs(p->getVx()));         // dirección positiva
         hit = true;
     }
     // Pared derecha
     else if (p->getX() + r >= sceneW) {
+        p->setX(sceneW - r - 1.0);
         p->setVx(-std::abs(p->getVx()));
         hit = true;
     }
 
     // Pared superior
-    if (p->getY() - r <= 0) {
+    if (p->getY() - r <= 0.0) {
+        p->setY(r + 1.0);
         p->setVy(std::abs(p->getVy()));
         hit = true;
     }
     // Pared inferior (suelo)
     else if (p->getY() + r >= sceneH) {
+        p->setY(sceneH - r - 1.0);
         p->setVy(-std::abs(p->getVy()));
         hit = true;
     }
@@ -40,73 +45,84 @@ bool PhysicsEngine::elasticWallCollision(Projectile* p, double sceneW, double sc
 
 // =============================================================================
 // COLISIÓN 2: INELÁSTICA con obstáculos
-// Se aplica:  v'_perp = -epsilon * v_perp   (pérdida de energía)
-//             v'_par  = v_par               (componente paralela intacta)
 //
-// El daño se calcula con la velocidad perpendicular al impacto:
-//   Daño = DAMAGE_FACTOR * masa * |v_perp_antes|
+//   v'_perp = -ε · v_perp    (pérdida de energía controlada por ε)
+//   v'_par  =  v_par         (componente tangencial sin cambio)
+//
+// Fórmula de daño:
+//   daño = DAMAGE_FACTOR × masa_proyectil × |v_perp_antes_del_impacto|
+//
+// Corrección de posición: tras el rebote el proyectil se desplaza fuera
+// del rect expandido en la dirección de la normal, eliminando el problema
+// de múltiples detecciones por el mismo contacto (tunneling inverso).
+//
+// Retorna el daño aplicado, o 0.0 si no hubo colisión.
 // =============================================================================
-bool PhysicsEngine::inelasticObstacleCollision(Projectile* p, Obstacle* obs)
+double PhysicsEngine::inelasticObstacleCollision(Projectile* p, Obstacle* obs)
 {
-    if (obs->isDestroyed() || !obs->isVisible()) return false;
+    if (obs->isDestroyed() || !obs->isVisible()) return 0.0;
 
     double r = Projectile::RADIUS;
     QRectF obsBounds = obs->rect();
 
-    // Expandir el rect del obstáculo por el radio del proyectil para detección
-    QRectF expanded(obsBounds.x()      - r,
-                    obsBounds.y()      - r,
-                    obsBounds.width()  + 2 * r,
-                    obsBounds.height() + 2 * r);
+    // Rect expandido: el centro del proyectil debe quedar dentro para detectar contacto
+    QRectF expanded(obsBounds.x()     - r,
+                    obsBounds.y()     - r,
+                    obsBounds.width() + 2.0 * r,
+                    obsBounds.height()+ 2.0 * r);
 
-    if (!expanded.contains(QPointF(p->getX(), p->getY()))) return false;
+    if (!expanded.contains(QPointF(p->getX(), p->getY()))) return 0.0;
 
-    // Determinar la normal de la cara impactada
+    // Normal de la cara impactada
     QPointF normal = detectCollisionNormal(p, obs);
-    if (normal.isNull()) return false;
+    if (normal.isNull()) return 0.0;
 
-    // nx, ny = componentes del vector normal unitario
     double nx = normal.x();
     double ny = normal.y();
 
-    // Velocidad actual
     double vx = p->getVx();
     double vy = p->getVy();
 
-    // Componente perpendicular: v_perp = (v · n) * n
+    // v · n: positivo → proyectil alejándose (ya rebotó), ignorar
     double vDotN = vx * nx + vy * ny;
+    if (vDotN >= 0.0) return 0.0;
 
-    // Solo procesar si el proyectil se acerca al obstáculo (v·n < 0)
-    if (vDotN >= 0) return false;
-
+    // Descomposición en componentes perpendicular y paralela
     double vPerpX = vDotN * nx;
     double vPerpY = vDotN * ny;
+    double vParX  = vx - vPerpX;
+    double vParY  = vy - vPerpY;
 
-    // Componente paralela: v_par = v - v_perp
-    double vParX = vx - vPerpX;
-    double vParY = vy - vPerpY;
-
-    // Velocidad perpendicular de impacto (módulo)
+    // Magnitud de la velocidad perpendicular (usada para el daño)
     double speedPerp = std::sqrt(vPerpX * vPerpX + vPerpY * vPerpY);
 
-    // Aplicar coeficiente de restitución a componente perpendicular
-    // v'_perp = -epsilon * v_perp
-    double newVx = vParX + (-EPSILON * vPerpX);
-    double newVy = vParY + (-EPSILON * vPerpY);
+    // Nueva velocidad: v' = v_par - ε · v_perp
+    p->setVx(vParX - EPSILON * vPerpX);
+    p->setVy(vParY - EPSILON * vPerpY);
 
-    p->setVx(newVx);
-    p->setVy(newVy);
+    // ── Corrección de posición ──────────────────────────────────────────────
+    // Calculamos cuánto hay que desplazar el centro del proyectil para que
+    // quede justo en el borde del rect expandido, en la dirección de la normal.
+    // Esto evita que el frame siguiente vuelva a detectar el mismo contacto.
+    double penetrationX = 0.0, penetrationY = 0.0;
+    if (nx < 0.0) penetrationX = p->getX() - expanded.left();   // izquierda del rect
+    if (nx > 0.0) penetrationX = p->getX() - expanded.right();  // derecha
+    if (ny < 0.0) penetrationY = p->getY() - expanded.top();
+    if (ny > 0.0) penetrationY = p->getY() - expanded.bottom();
+
+    // Mover el proyectil 2 px más allá del borde (margen de seguridad)
+    if (nx != 0.0) p->setX(p->getX() - penetrationX - nx * 2.0);
+    if (ny != 0.0) p->setY(p->getY() - penetrationY - ny * 2.0);
 
     // Calcular y aplicar daño al obstáculo
     double damage = calculateDamage(p, speedPerp);
     obs->applyDamage(damage);
 
-    return true;
+    return damage;
 }
 
 // =============================================================================
-// Calcula el daño al obstáculo
-// Daño = DAMAGE_FACTOR * masa_proyectil * |v_perp_impacto|
+// Daño = DAMAGE_FACTOR × masa × |v_perp_impacto|
 // =============================================================================
 double PhysicsEngine::calculateDamage(Projectile* p, double speed) const
 {
@@ -114,27 +130,24 @@ double PhysicsEngine::calculateDamage(Projectile* p, double speed) const
 }
 
 // =============================================================================
-// Determina la normal de la cara del obstáculo más cercana al proyectil.
-// Se analiza qué cara (top, bottom, left, right) es la más probable de impacto
-// basándose en la posición relativa del proyectil.
+// Normal de la cara del obstáculo más cercana al proyectil.
+// Se calcula la penetración en cada eje y se elige la menor (cara más próxima).
 // =============================================================================
 QPointF PhysicsEngine::detectCollisionNormal(Projectile* p, Obstacle* obs) const
 {
-    QRectF r = obs->rect();
+    QRectF rect = obs->rect();
     double px = p->getX();
     double py = p->getY();
 
-    // Distancias a cada cara
-    double dLeft   = std::abs(px - r.left());
-    double dRight  = std::abs(px - r.right());
-    double dTop    = std::abs(py - r.top());
-    double dBottom = std::abs(py - r.bottom());
+    double dLeft   = std::abs(px - rect.left());
+    double dRight  = std::abs(px - rect.right());
+    double dTop    = std::abs(py - rect.top());
+    double dBottom = std::abs(py - rect.bottom());
 
     double minDist = std::min({dLeft, dRight, dTop, dBottom});
 
-    // La cara más cercana determina la normal
-    if (minDist == dLeft)   return QPointF(-1,  0);  // pared izquierda → normal hacia izquierda
-    if (minDist == dRight)  return QPointF( 1,  0);  // pared derecha
-    if (minDist == dTop)    return QPointF( 0, -1);  // pared superior
-    return QPointF( 0,  1);  // pared inferior
+    if (minDist == dLeft)   return QPointF(-1.0,  0.0);
+    if (minDist == dRight)  return QPointF( 1.0,  0.0);
+    if (minDist == dTop)    return QPointF( 0.0, -1.0);
+    return                         QPointF( 0.0,  1.0);
 }
